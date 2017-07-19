@@ -1,0 +1,13 @@
+3 		!number of data sets, int
+2 		!number of independent parameters, int
+1.0E-04 	!convergence criteria
+30		!max iterations
+
+Please enter your initial parameters (one line)
+0.5 0.1
+
+Please enter file names of datasets (one per line)
+A.txt
+B.txt
+C.txt
+

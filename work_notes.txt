@@ -1,0 +1,3 @@
+July 18, 2017
+- implimented main function, input parser, and started work on newton-gauss optimization and hard coding residuals for the test : A->B and A-> C, with k1 of 0.85 and k2 of 0.23 
+- to do, work on residuals and jacobian, figure out how to work with LAPACK and BLAS
