@@ -5,7 +5,7 @@ MODULE nlsq_input
   CONTAINS
 
 !-------------------------------------------------------
-  SUBROUTINE get_input(x,y,ik,tol,max_it,stat)
+  SUBROUTINE get_input(x,y,ik,tol,max_it,der_type,hscal,stat)
     IMPLICIT NONE
     ! x           :       2D DP array of x values to fit
     ! y           :       2D DP array of y values to fit
@@ -15,16 +15,19 @@ MODULE nlsq_input
     ! stat	  :	  int status
     
     !INOUT variables
-    DOUBLE PRECISION, DIMENSION(:,:), ALLOCATABLE, INTENT(INOUT) :: x,y
-    DOUBLE PRECISION, DIMENSION(:), ALLOCATABLE, INTENT(INOUT) :: ik 
-    DOUBLE PRECISION, INTENT(INOUT) :: tol
-    INTEGER, INTENT(INOUT) :: max_it,stat
-    CHARACTER(LEN=32) :: fname
+    REAL, DIMENSION(:,:), ALLOCATABLE, INTENT(INOUT) :: x,y
+    REAL, DIMENSION(:), ALLOCATABLE, INTENT(INOUT) :: ik 
+    REAL, INTENT(INOUT) :: tol,hscal
+    INTEGER, INTENT(INOUT) :: max_it,stat,der_type
+    CHARACTER(LEN=32) :: fname,line
 
     !internal varaibles
     INTEGER :: nd,np,nk,i,j,io
 
     stat = 1 !reset at end if nothing goes wrong
+ 
+    !defaults
+    hscal = 1.0E-4
 
     OPEN (unit=1, file="input.dat", status="old", access="sequential")
    
@@ -34,21 +37,33 @@ MODULE nlsq_input
     ALLOCATE(ik(0:nk-1))
     READ(1,*) tol
     READ(1,*) max_it
+    READ(1,*) line 
+    IF (line .EQ. "analytic") THEN
+      der_type = 0
+    ELSE IF (line .EQ. "forward") THEN
+      der_type = 1
+    ELSE IF (line .EQ. "central") THEN
+      der_type = 2
+    ELSE
+      WRITE(*,*) "Bad derivative type input, using central differences"
+      der_type = 2
+    END IF
+    IF (der_type .EQ. 0) THEN
+      READ(1,*)
+    ELSE
+      READ(1,*) hscal
+    END IF 
     READ(1,*)
     READ(1,*) 
     READ(1,*) ik
     READ(1,*)
     READ(1,*)
 
-
-    !get number of datapoints
-    
-
     !get data
+    np = 0
     DO i=0,nd-1
 
       READ(1,*) fname 
-      np = 0
 
       !get number of datapoints
       IF (i .EQ. 0) THEN
@@ -64,19 +79,17 @@ MODULE nlsq_input
         ALLOCATE(y(0:nd-1,0:np-1))
       END IF
 
-      
-
       !read file
       OPEN(unit=2,file=fname,status="old",access="sequential")
       DO j=0,np-1
-        READ(2,*) y(0,j), x(0,j)  
+        READ(2,*) x(i,j), y(i,j)  
       END DO 
       CLOSE(unit=2,status="keep")
     END DO     
 
     CLOSE (unit=1, status="keep")
     
-    CALL print_input(nd,nk,ik,tol,max_it)
+    CALL print_input(nd,nk,ik,tol,der_type,hscal,max_it)
 
     stat = 0
 
@@ -84,11 +97,11 @@ MODULE nlsq_input
 
 !-------------------------------------------------------
 
-  SUBROUTINE print_input(nd,nk,ik,tol,max_it)
+  SUBROUTINE print_input(nd,nk,ik,tol,der_type,hscal,max_it)
     IMPLICIT NONE
-    DOUBLE PRECISION, DIMENSION(0:), INTENT(IN) :: ik 
-    DOUBLE PRECISION, INTENT(IN) :: tol
-    INTEGER, INTENT(IN) :: nd,nk,max_it
+    REAL, DIMENSION(0:), INTENT(IN) :: ik 
+    REAL, INTENT(IN) :: tol,hscal
+    INTEGER, INTENT(IN) :: nd,nk,max_it,der_type
     INTEGER :: i
 
     WRITE(*,*) "Number of Datasets : ", nd
@@ -97,7 +110,16 @@ MODULE nlsq_input
     DO i=0,SIZE(ik)-1
       WRITE(*,*) ik(i)
     END DO 
-    
+    IF (der_type .EQ. 0) THEN
+      WRITE(*,*) "Derivative type : analytical" 
+      WRITE(*,*) "Remember to edit 'hard_code.f90'"
+    ELSE IF (der_type .EQ. 1) THEN
+      WRITE(*,*) "Derivative type : forward"
+      WRITE(*,*) "h scale factor of : ", hscal
+    ELSE
+      WRITE(*,*) "Derivative type : central"
+      WRITE(*,*) "h scale factor of : ", hscal
+    END IF 
 
   END SUBROUTINE print_input
 

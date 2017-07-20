@@ -1,4 +1,4 @@
-!Program to perform global, nonlinear least squares fit using Newton-Gauss algorithm
+!Program to fit multiple datasets with shared parameters
 
 PROGRAM main
 
@@ -14,11 +14,13 @@ PROGRAM main
   ! tol 	:	DP convergence tolerance 
   ! max_it	:	int max iterations
   ! stat	:	int status
+  ! der_type	:	char - type of derivatives chosen, 0 - analytic, 1 - forward, 2 - central
+  ! hscal	:	sp scale factor for h with numerical derivatives
 
-  DOUBLE PRECISION, DIMENSION(:,:), ALLOCATABLE :: x,y
-  DOUBLE PRECISION, DIMENSION(:), ALLOCATABLE :: beta0, beta
-  DOUBLE PRECISION :: tol,foo
-  INTEGER :: max_it,stat,i,j
+  REAL, DIMENSION(:,:), ALLOCATABLE :: x,y
+  REAL, DIMENSION(:), ALLOCATABLE :: beta0, beta
+  REAL :: tol,hscal
+  INTEGER :: max_it,stat,i,j,der_type
 
   stat = 0
 
@@ -27,9 +29,9 @@ PROGRAM main
   WRITE(*,*) "Non-linear, least squares solver started"
   WRITE(*,*) 
 
-  CALL get_input(x,y,beta0,tol,max_it,stat) 
+  CALL get_input(x,y,beta0,tol,max_it,der_type,hscal,stat) 
   beta = beta0
-  CALL opt_NG(beta,beta0,x,y,tol,max_it,stat)
+  CALL opt_MRQT(beta,beta0,x,y,tol,max_it,der_type,hscal,stat)
   WRITE(*,*)   
   WRITE(*,*) "Completed with status: ", stat
   WRITE(*,*) "%%%%%%%%%%%%%%%%%%%%" 

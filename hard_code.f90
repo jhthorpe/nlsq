@@ -8,19 +8,32 @@ MODULE hard_code
 
 !--------------------------------------------------------
 !individual residuals
-   SUBROUTINE residual(i,y,x,beta)
+ REAL FUNCTION residual(p,i,y,x,beta)
     IMPLICIT NONE
-    INTEGER, INTENT(IN) :: i
-    DOUBLE PRECISION, DIMENSION(0:), INTENT(IN) :: beta,x,y
-     
+    INTEGER, INTENT(IN) :: i,p
+    REAL, DIMENSION(0:), INTENT(IN) :: beta
+    REAL, DIMENSION(0:), INTENT(IN) :: x,y
 
-  END SUBROUTINE residual
+    !Construct your residuals here 
+    IF (p .EQ. 0) THEN
+      residual = y(i) - (EXP(-(beta(0)+beta(1))*x(i)))  
+    ELSE IF (p .EQ. 1) THEN
+      residual = y(i) - (beta(0)/(beta(0)+beta(1)))*(1.0D0 - EXP(-(beta(0)+beta(1))*x(i))) 
+    ELSE IF (p .EQ. 2) THEN
+      residual = y(i) - (beta(1)/(beta(0)+beta(1)))*(1.0D0 - EXP(-(beta(0)+beta(1))*x(i))) 
+    ELSE
+      WRITE(*,*) "WARNING - attempted to reference non-defined residual"
+      STOP
+    END IF
+
+
+  END FUNCTION residual
 !--------------------------------------------------------
 !analytical jacobians indicies
-  DOUBLE PRECISION FUNCTION jacobian(i,j,beta)
+  REAL FUNCTION jacobian(i,j,beta)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: i,j
-    DOUBLE PRECISION, DIMENSION(0:), INTENT(IN) :: beta
+    REAL, DIMENSION(0:), INTENT(IN) :: beta
 
     WRITE(*,*) i,j
     WRITE(*,*) beta(i)
