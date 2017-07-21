@@ -32,8 +32,8 @@ MODULE optimize
     INTEGER, INTENT(INOUT) :: stat
   
     !internal
-    REAL(KIND=8) :: old_scs,new_csc,l
-    REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: chisq,delta,fdiv 
+    REAL(KIND=8) :: old_scs,new_scs,l
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: chisq,new_chisq,delta,fdiv 
     REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:) :: sdiv 
     REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:) :: Jr 
     REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:,:) :: Hr 
@@ -46,6 +46,7 @@ MODULE optimize
     nr = SIZE(x(:,0))
     nb = SIZE(beta(:))
     ALLOCATE(chisq(0:nr-1))
+    ALLOCATE(new_chisq(0:nr-1))
     ALLOCATE(delta(0:nb-1))
     ALLOCATE(fdiv(0:nb-1))
     ALLOCATE(sdiv(0:nb-1,0:nb-1))
@@ -70,7 +71,7 @@ MODULE optimize
       DO j=0,n(i)-1
         chisq(i) = chisq(i) + (residual(i,j,y(i,:),x(i,:),beta0(:))**2.0D0) 
       END DO
-      chisq(i) = chisq(i)/(1.0D0*n(i))
+      !chisq(i) = chisq(i)/(1.0D0*n(i))
       old_scs = old_scs + chisq(i)
     END DO
 
@@ -84,6 +85,17 @@ MODULE optimize
 
     !3) Perform algorithm
     DO iter=0,max_it-1
+
+
+      IF (iter .GT. 0) THEN
+        WRITE(*,*) "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+        WRITE(*,*) "Iteration : ", iter
+        WRITE(*,*)
+        WRITE(*,*) "Starting parameters" 
+        WRITE(*,*) beta0(:) 
+        WRITE(*,*) "Lambda : ", l
+        WRITE(*,*) 
+      END IF
 
 
       !3) find delta  
@@ -138,7 +150,38 @@ MODULE optimize
       WRITE(*,*) beta(:)
      
      !5) get trail fit
-     
+      new_scs = 0.0D0
+      DO i=0,nr-1
+        new_chisq(i) = 0.0D0
+        DO j=0,n(i)-1
+          new_chisq(i) = new_chisq(i) + (residual(i,j,y(i,:),x(i,:),beta(:))**2.0D0) 
+        END DO
+        !new_chisq(i) = new_chisq(i)/(1.0D0*n(i))
+        new_scs = new_scs + new_chisq(i)
+      END DO
+      WRITE(*,*)
+      WRITE(*,*) "Trial sum of squares vector :"
+      WRITE(*,*) new_chisq(:) 
+      WRITE(*,*) "Trial sum of sum of squares is...", new_scs
+      WRITE(*,*) 
+  
+      !6) if sum of sum of squares is worse...
+      IF (new_scs .GE. old_scs) THEN
+        WRITE(*,*) "No improvement, adjusting lambda" 
+        CALL summary(beta0,beta0,old_scs,old_scs,chisq,chisq,iter)
+        l = l * 10.0D0
+        WRITE(*,*) "New lambda : ", l 
+      ELSE
+        WRITE(*,*) "Adopting new parameters"
+        CALL summary(beta0,beta,old_scs,new_scs,chisq,new_chisq,iter)
+        l = l * 0.10D0
+        beta0 = beta(:)
+        old_scs = new_scs
+        chisq = new_chisq(:)
+        WRITE(*,*) "New lambda : ", l
+      END IF 
+
+      
 
     END DO
      
@@ -146,6 +189,41 @@ MODULE optimize
  
   END SUBROUTINE opt_mrqt
 
+!--------------------------------------------------------
+!  print sumary of iteration
+  SUBROUTINE summary(old_b,new_b,old_scs,new_scs,old_cs,new_cs,iter)
+    IMPLICIT NONE
+
+    REAL(KIND=8), INTENT(IN) :: old_scs,new_scs
+    REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: old_cs,new_cs,old_b,new_b
+    INTEGER, INTENT(IN) :: iter
+
+    INTEGER :: nb,nr,i,j
+    
+    nr = SIZE(new_cs(:))
+    nb = SIZE(new_b(:))
+      WRITE(*,*)
+      WRITE(*,*) "================================================================================"
+      WRITE(*,*) "  SUMMARY OF ITERATION", iter 
+      WRITE(*,*) "--------------------------------------------------------------------------------" 
+      WRITE(*,*) "  PARAMETERS" 
+      WRITE(*,*) "  old      new      change      %  "
+      DO i=0,nb-1
+        WRITE(*,*) old_b(i), new_b(i), new_b(i)-old_b(i), 100.0D0*(new_b(i)-old_b(i))/old_b(i)
+      END DO
+      WRITE(*,*) "-----------"
+      WRITE(*,*) "SUM OF SQUARE DIFFERENCES"  
+      WRITE(*,*) "  old      new      change      %  "
+      DO i=0,nr-1
+        WRITE(*,*) old_cs(i), new_cs(i), new_cs(i)-old_cs(i), 100.0E0*(new_cs(i)-old_cs(i))/old_cs(i)
+      END DO
+      WRITE(*,*) "-----------"
+      WRITE(*,*) "SUM OF SUM OF SQUARE DIFFERENCES"
+      WRITE(*,*) "  old      new      change      %  "
+      WRITE(*,*) old_scs, new_scs, old_scs-new_scs, 100.0D0*(new_scs-old_scs)/old_scs
+      WRITE(*,*) "================================================================================"
+      WRITE(*,*)
+   END SUBROUTINE summary
 !--------------------------------------------------------
 ! Get the first partial derivative vector for Marquardt optimization 
   SUBROUTINE get_fdiv(fdiv,der_type,hscal,y,x,beta0,n,Jr,stat)
@@ -186,7 +264,7 @@ MODULE optimize
         rs = 0.0E0
         DO j=0,nr-1 !loop over residuals
           DO k=0,n(j)-1 !loop over indicies
-            rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*jacobian(j,i,k,y(j,:),x(j,:),beta0(:))/(1.0E0*n(j))
+            rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*jacobian(j,i,k,y(j,:),x(j,:),beta0(:))!/(1.0E0*n(j))
           END DO
         END DO
         fdiv(i) = rs
@@ -199,7 +277,7 @@ MODULE optimize
         rs=0.0E0
         DO j=0,nr-1 !loop over residuals
           DO k=0,n(j)-1 !loop over indicies
-          rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*Jr(j,i,k)/(1.0E0*n(j)) 
+          rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*Jr(j,i,k)!/(1.0E0*n(j)) 
           END DO
         END DO
         fdiv(i) = rs
@@ -251,7 +329,7 @@ MODULE optimize
         rs = 0.0E0
         DO k=0,nr-1  !loop over residual 
           DO l=0,ni-1 ! loop over index
-            rs = rs + Jr(k,i,l)*Jr(k,j,l)/ni !this is a strange way to get the second derivative? 
+            rs = rs + Jr(k,i,l)*Jr(k,j,l)!/ni !this is a strange way to get the second derivative? 
           END DO
         END DO 
         sdiv(i,j) = rs

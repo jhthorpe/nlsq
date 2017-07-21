@@ -1,7 +1,7 @@
 3 		!number of data sets, int
 2 		!number of independent parameters, int
 1.0E-04 	!convergence criteria
-1		!max iterations
+5		!max iterations
 central		!method for derivatives (analytic, must edit hard_code.f90, forward, or central)
 1.0E-6		!scale factor to get h for numerical derivatives
 
