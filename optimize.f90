@@ -27,7 +27,8 @@ MODULE optimize
     !INOUT    
     REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y
     REAL(KIND=8), DIMENSION(0:), INTENT(INOUT) :: beta, beta0
-    REAL(KIND=8), INTENT(IN) :: tol,hscal
+    REAL(KIND=8), INTENT(INOUT) :: tol
+    REAL(KIND=8), INTENT(IN) :: hscal
     INTEGER, INTENT(IN) :: max_it,der_type
     INTEGER, INTENT(INOUT) :: stat
   
@@ -57,6 +58,7 @@ MODULE optimize
     DO i=0,nr-1
       n(i) = SIZE(x(i,:))
     END DO
+    tol = tol/n(0) 
     ALLOCATE(Jr(0:nr-1,0:nb-1,0:n(0)-1)) !Jr (residual,parameter,index)
     ALLOCATE(Hr(0:nr-1,0:nb-1,0:nb-1,0:n(0)-1)) !Hr (residual, parameter, parameter, index)
 
@@ -184,7 +186,8 @@ MODULE optimize
         chisq = new_chisq(:)
         WRITE(*,*) "New lambda : ", l
       END IF
-
+      WRITE(*,*)
+     
       !track output
       track_scs(iter) = old_scs
       track_param(:,iter) = beta0(:) 
@@ -304,7 +307,7 @@ MODULE optimize
         rs = 0.0E0
         DO j=0,nr-1 !loop over residuals
           DO k=0,n(j)-1 !loop over indicies
-            rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*jacobian(j,i,k,y(j,:),x(j,:),beta0(:))!/(1.0E0*n(j))
+            rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*jacobian(j,i,k,y(j,:),x(j,:),beta0(:))/(1.0E0*n(j))
           END DO
         END DO
         fdiv(i) = rs
@@ -317,7 +320,7 @@ MODULE optimize
         rs=0.0E0
         DO j=0,nr-1 !loop over residuals
           DO k=0,n(j)-1 !loop over indicies
-          rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*Jr(j,i,k)!/(1.0E0*n(j)) 
+          rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*Jr(j,i,k)/(1.0E0*n(j)) 
           END DO
         END DO
         fdiv(i) = rs
@@ -369,7 +372,7 @@ MODULE optimize
         rs = 0.0E0
         DO k=0,nr-1  !loop over residual 
           DO l=0,ni-1 ! loop over index
-            rs = rs + Jr(k,i,l)*Jr(k,j,l)!/ni !this is a strange way to get the second derivative? 
+            rs = rs + Jr(k,i,l)*Jr(k,j,l)/ni !this is a strange way to get the second derivative? 
           END DO
         END DO 
         sdiv(i,j) = rs
