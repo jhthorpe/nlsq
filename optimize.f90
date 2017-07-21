@@ -64,13 +64,13 @@ MODULE optimize
     !Initial Setup 
 
     ! 1) calcuate initial sum chi^2
-    old_scs = 0.0E0
+    old_scs = 0.0D0
     DO i=0,nr-1
-      chisq(i) = 0.0E0
+      chisq(i) = 0.0D0
       DO j=0,n(i)-1
-        chisq(i) = chisq(i) + (residual(i,j,y(i,:),x(i,:),beta0(:))**2.0E0) 
+        chisq(i) = chisq(i) + (residual(i,j,y(i,:),x(i,:),beta0(:))**2.0D0) 
       END DO
-      chisq(i) = chisq(i)/(1.0E0*n(i))
+      chisq(i) = chisq(i)/(1.0D0*n(i))
       old_scs = old_scs + chisq(i)
     END DO
 
@@ -80,7 +80,7 @@ MODULE optimize
     WRITE(*,*) 
 
     !2) set lambda
-    l = 10.0E-03
+    l = 10.0D-03
 
     !3) Perform algorithm
     DO iter=0,max_it-1
@@ -92,16 +92,53 @@ MODULE optimize
       IF (stat .NE. 2) STOP
       WRITE(*,*) "first partial derivative vector"
       WRITE(*,*) fdiv(:)
+      WRITE(*,*)
 
       !3b) get second partial derivative vector
       CALL get_sdiv(sdiv,der_type,hscal,y,x,beta0,n,Jr,Hr,stat)
       IF (stat .NE. 2) STOP
       WRITE(*,*) "second partial derivative matrix"
       DO j=0,nb-1
-        WRITE(*,*) sdiv(j,:)
+        WRITE(*,*) sdiv(:,j)
       END DO
-      WRITE(*,*) "code this up, James"
+      WRITE(*,*)
 
+      !3c) multiply by identiy*(1+lambda)
+      DO i=0,nb-1
+        sdiv(i,i) = sdiv(i,i) * (1.0D0 + l)
+      END DO
+      WRITE(*,*) "matrix alpha"
+      DO j=0,nb-1
+        WRITE(*,*) sdiv(:,j) 
+      END DO
+
+      !3d) Invert alpha matrix
+      CALL invert_2ddp(sdiv,stat)
+      IF (stat .NE. 2) STOP
+      WRITE(*,*)
+      WRITE(*,*) "inverted alpha"
+      DO j=0,nb-1
+        WRITE(*,*) sdiv(:,j)
+      END DO
+
+      !3e) Get delta
+      DO i=0,nb-1
+        delta(i) = 0.0D0
+        DO j=0,nb-1
+          delta(i) = delta(i) + fdiv(j)*sdiv(j,i)
+        END DO
+      END DO
+
+      !4) get new alpha
+      DO i=0,nb-1
+        beta(i) = beta0(i) + delta(i)
+      END DO
+      WRITE(*,*) 
+      WRITE(*,*) "trial parameters"
+      WRITE(*,*) beta(:)
+     
+     !5) get trail fit
+     
 
     END DO
      
@@ -271,6 +308,40 @@ MODULE optimize
 
   END SUBROUTINE get_Jac
 !--------------------------------------------------------
+! use lapack and blas to invert a 2d, dp matrix
+  SUBROUTINE invert_2ddp(A,stat)
+    IMPLICIT NONE
+
+    REAL(KIND=8), DIMENSION(0:,0:),INTENT(INOUT) :: A
+    INTEGER, INTENT(INOUT) :: stat
+
+    !LAPACK specific values
+    REAL(KIND=8), DIMENSION(SIZE(A(:,0))) :: work !lapack working array
+    INTEGER(KIND=8), DIMENSION(SIZE(A(:,0))) :: ipiv !lapack index storage
+    INTEGER :: n,info
+
+    n = SIZE(A(:,0))
+    stat = stat + 1
+
+    CALL DGETRF(n,n,A,n,ipiv,info)
+    
+    IF (info .NE. 0) THEN
+      WRITE(*,*) "Not a square matrix"
+      STOP
+    END IF
+
+    CALL DGETRI(n,A,n,ipiv,work,n,info)
+ 
+    IF (info .NE. 0) THEN
+      WRITE(*,*) "matrix inversion failed"
+      STOP
+    END IF
+
+    stat = stat - 1
+
+  END SUBROUTINE invert_2ddp 
+!--------------------------------------------------------
+
 ! Gauss-Newton Least Squares optimization 
 
   SUBROUTINE opt_GN(beta,beta0,x,y,tol,max_it,stat)
@@ -328,7 +399,6 @@ MODULE optimize
 
   END SUBROUTINE update_values
 !--------------------------------------------------------
-
  
 
 END MODULE optimize

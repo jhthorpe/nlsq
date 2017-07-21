@@ -22,6 +22,12 @@ PROGRAM main
   REAL(KIND=8) :: tol,hscal
   INTEGER :: max_it,stat,i,j,der_type
 
+  !testing lapack
+  real(KIND=8), dimension(0:1,0:1) :: A,Ainv
+  real(KIND=8), dimension(0:1) :: work
+  integer(KIND=8), dimension(0:1) :: ipiv
+  integer :: q,info
+
   stat = 0
 
   WRITE(*,*) 
@@ -37,4 +43,41 @@ PROGRAM main
   WRITE(*,*) "%%%%%%%%%%%%%%%%%%%%" 
   WRITE(*,*) 
 
+  !testing lapack
+  WRITE(*,*) "Testing lapack"
+  !external DGETRF
+  !external DGETRI
+  A(0,0) = 1.0D0 
+  A(0,1) = 1.0D0
+  A(1,0) = 0.0D0 
+  A(1,1) = 2.0D0
+  WRITE(*,*) A(:,0)
+  WRITE(*,*) A(:,1)
+  Ainv = A
+  q = 2
+  info = 0
+  call DGETRF(q,q,Ainv,q,ipiv,info)
+
+  if (info .NE. 0) then
+    WRITE(*,*) "matrix is singular"
+    STOP
+  else 
+    write(*,*)"here"
+  end if
+
+  WRITE(*,*) ipiv(:)
+
+  call DGETRI(q,Ainv,q,ipiv,work,q,info)
+
+  write(*,*) "here1"
+
+  if (info .NE. 0) THEN
+    write(*,*) "matrix inversion failed"
+    stop
+  else
+    write(*,*) Ainv(0,0),Ainv(1,0)
+    write(*,*) Ainv(0,1),Ainv(1,1)
+  end if
+
+  
 END PROGRAM main
