@@ -17,9 +17,9 @@ PROGRAM main
   ! der_type	:	char - type of derivatives chosen, 0 - analytic, 1 - forward, 2 - central
   ! hscal	:	sp scale factor for h with numerical derivatives
 
-  REAL, DIMENSION(:,:), ALLOCATABLE :: x,y
-  REAL, DIMENSION(:), ALLOCATABLE :: beta0, beta
-  REAL :: tol,hscal
+  REAL(KIND=8), DIMENSION(:,:), ALLOCATABLE :: x,y
+  REAL(KIND=8), DIMENSION(:), ALLOCATABLE :: beta0, beta
+  REAL(KIND=8) :: tol,hscal
   INTEGER :: max_it,stat,i,j,der_type
 
   stat = 0

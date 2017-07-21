@@ -15,9 +15,9 @@ MODULE nlsq_input
     ! stat	  :	  int status
     
     !INOUT variables
-    REAL, DIMENSION(:,:), ALLOCATABLE, INTENT(INOUT) :: x,y
-    REAL, DIMENSION(:), ALLOCATABLE, INTENT(INOUT) :: ik 
-    REAL, INTENT(INOUT) :: tol,hscal
+    REAL(KIND=8), DIMENSION(:,:), ALLOCATABLE, INTENT(INOUT) :: x,y
+    REAL(KIND=8), DIMENSION(:), ALLOCATABLE, INTENT(INOUT) :: ik 
+    REAL(KIND=8), INTENT(INOUT) :: tol,hscal
     INTEGER, INTENT(INOUT) :: max_it,stat,der_type
     CHARACTER(LEN=32) :: fname,line
 
@@ -99,8 +99,8 @@ MODULE nlsq_input
 
   SUBROUTINE print_input(nd,nk,ik,tol,der_type,hscal,max_it)
     IMPLICIT NONE
-    REAL, DIMENSION(0:), INTENT(IN) :: ik 
-    REAL, INTENT(IN) :: tol,hscal
+    REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: ik 
+    REAL(KIND=8), INTENT(IN) :: tol,hscal
     INTEGER, INTENT(IN) :: nd,nk,max_it,der_type
     INTEGER :: i
 
