@@ -1,12 +1,12 @@
 3 		!number of data sets, int
 2 		!number of independent parameters, int
-1.0E-04 	!convergence criteria
-5		!max iterations
+1.0E-06 	!convergence criteria
+50		!max iterations
 central		!method for derivatives (analytic, must edit hard_code.f90, forward, or central)
 1.0E-6		!scale factor to get h for numerical derivatives
 
 Please enter your initial parameters (one line)
-0.51E0 0.28E0
+5.51E0 2.28E0
 
 Please enter file names of datasets (one per line)
 A.txt

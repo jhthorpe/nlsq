@@ -33,13 +33,14 @@ MODULE optimize
   
     !internal
     REAL(KIND=8) :: old_scs,new_scs,l
-    REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: chisq,new_chisq,delta,fdiv 
-    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:) :: sdiv 
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: chisq,new_chisq,delta,fdiv,track_scs 
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:) :: sdiv, track_param 
     REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:) :: Jr 
     REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:,:) :: Hr 
     INTEGER, DIMENSION(:), ALLOCATABLE :: n
-    INTEGER :: i,j,nb,nr, iter
+    INTEGER :: i,j,nb,nr,iter,flag
 
+    flag = 0
     stat = 2
 
     !get important numbers
@@ -50,6 +51,8 @@ MODULE optimize
     ALLOCATE(delta(0:nb-1))
     ALLOCATE(fdiv(0:nb-1))
     ALLOCATE(sdiv(0:nb-1,0:nb-1))
+    ALLOCATE(track_scs(0:max_it-1))
+    ALLOCATE(track_param(0:nb-1,0:max_it-1))
     ALLOCATE(n(0:nr-1))
     DO i=0,nr-1
       n(i) = SIZE(x(i,:))
@@ -172,6 +175,7 @@ MODULE optimize
         l = l * 10.0D0
         WRITE(*,*) "New lambda : ", l 
       ELSE
+        IF (new_scs .LE. tol) flag = 1 !we have reached the cutoff we care about
         WRITE(*,*) "Adopting new parameters"
         CALL summary(beta0,beta,old_scs,new_scs,chisq,new_chisq,iter)
         l = l * 0.10D0
@@ -179,16 +183,52 @@ MODULE optimize
         old_scs = new_scs
         chisq = new_chisq(:)
         WRITE(*,*) "New lambda : ", l
-      END IF 
+      END IF
 
-      
+      !track output
+      track_scs(iter) = old_scs
+      track_param(:,iter) = beta0(:) 
 
+      IF (flag .EQ. 1 .OR. flag .EQ. 2) EXIT
+
+         
     END DO
      
+    IF (flag .EQ. 0) THEN
+      WRITE(*,*) "Max iterations reached"
+    ELSE IF (flag .EQ. 1) THEN
+      WRITE(*,*) "Sum of Sum of Square Difference below cutoff" 
+    ELSE IF (flag .EQ. 2) THEN
+      WRITE(*,*) "Optimization has converged"
+    END IF
+
+    CALL write_output(track_scs,track_param,iter)
+
    stat = 0
  
   END SUBROUTINE opt_mrqt
 
+!--------------------------------------------------------
+! print output of optimization
+  SUBROUTINE write_output(goal,param,iter)
+    IMPLICIT NONE
+    REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: goal 
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: param
+    INTEGER, INTENT(IN) :: iter
+
+    INTEGER :: i
+
+    WRITE(*,*) "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"  
+    WRITE(*,*)  
+    WRITE(*,*) "                          SUMMARY OF CALCULATION" 
+    WRITE(*,*) "iteration      X^2     parameters" 
+    DO i=0,iter-1
+      WRITE(*,*) i, goal(i), param(:,i)
+    END DO
+    WRITE(*,*) 
+        
+
+  END SUBROUTINE write_output
 !--------------------------------------------------------
 !  print sumary of iteration
   SUBROUTINE summary(old_b,new_b,old_scs,new_scs,old_cs,new_cs,iter)
