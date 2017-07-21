@@ -17,7 +17,7 @@ MODULE optimize
     ! tol	:	sp convergence tolerance
     ! max_it	:	int maximum iterations
     ! stat	:	integer status
-    ! m		: 	int number of curves to fit
+    ! nr	: 	int number of curves to fit
     ! nb	:	int number of parameters
     ! n		:	1D int number of datapoints
     ! l		: 	sp lambda, controls algorithm
@@ -34,21 +34,27 @@ MODULE optimize
     !internal
     REAL(KIND=8) :: old_scs,new_csc,l
     REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: chisq,delta,fdiv 
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:) :: sdiv 
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:) :: Jr 
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:,:) :: Hr 
     INTEGER, DIMENSION(:), ALLOCATABLE :: n
-    INTEGER :: i,j,nb,m, iter
+    INTEGER :: i,j,nb,nr, iter
 
     stat = 2
 
     !get important numbers
-    m = SIZE(x(:,1))
+    nr = SIZE(x(:,0))
     nb = SIZE(beta(:))
-    ALLOCATE(chisq(0:m-1))
+    ALLOCATE(chisq(0:nr-1))
     ALLOCATE(delta(0:nb-1))
     ALLOCATE(fdiv(0:nb-1))
-    ALLOCATE(n(0:m-1))
-    DO i=0,m-1
+    ALLOCATE(sdiv(0:nb-1,0:nb-1))
+    ALLOCATE(n(0:nr-1))
+    DO i=0,nr-1
       n(i) = SIZE(x(i,:))
     END DO
+    ALLOCATE(Jr(0:nr-1,0:nb-1,0:n(0)-1)) !Jr (residual,parameter,index)
+    ALLOCATE(Hr(0:nr-1,0:nb-1,0:nb-1,0:n(0)-1)) !Hr (residual, parameter, parameter, index)
 
     WRITE(*,*) 
     WRITE(*,*) "~~~~~~~~~~~~~~~~~~~~"
@@ -59,7 +65,7 @@ MODULE optimize
 
     ! 1) calcuate initial sum chi^2
     old_scs = 0.0E0
-    DO i=0,m-1
+    DO i=0,nr-1
       chisq(i) = 0.0E0
       DO j=0,n(i)-1
         chisq(i) = chisq(i) + (residual(i,j,y(i,:),x(i,:),beta0(:))**2.0E0) 
@@ -79,15 +85,22 @@ MODULE optimize
     !3) Perform algorithm
     DO iter=0,max_it-1
 
+
       !3) find delta  
       !3a) get first partial deriviative vector
-      CALL get_fdiv(fdiv,der_type,hscal,y,x,beta0,n,stat) 
+      CALL get_fdiv(fdiv,der_type,hscal,y,x,beta0,n,Jr,stat) 
+      IF (stat .NE. 2) STOP
       WRITE(*,*) "first partial derivative vector"
       WRITE(*,*) fdiv(:)
-      IF (stat .NE. 2) STOP
 
       !3b) get second partial derivative vector
-      !CALL get_sdiv(sdiv,der_type,hscal,y,x,beta0,n,stat)
+      CALL get_sdiv(sdiv,der_type,hscal,y,x,beta0,n,Jr,Hr,stat)
+      IF (stat .NE. 2) STOP
+      WRITE(*,*) "second partial derivative matrix"
+      DO j=0,nb-1
+        WRITE(*,*) sdiv(j,:)
+      END DO
+      WRITE(*,*) "code this up, James"
 
 
     END DO
@@ -98,14 +111,15 @@ MODULE optimize
 
 !--------------------------------------------------------
 ! Get the first partial derivative vector for Marquardt optimization 
-  SUBROUTINE get_fdiv(fdiv,der_type,hscal,y,x,beta0,n,stat)
+  SUBROUTINE get_fdiv(fdiv,der_type,hscal,y,x,beta0,n,Jr,stat)
     IMPLICIT NONE
 
     ! fdiv	:	1D sp first partial deriviatives vector
     ! beta0	:	1D sp vector of parameters 
     ! hscal	:	sp scaling for numerical derivatives
     ! der_type	:	int derivative type
-    ! m		:	number of datasets
+    ! Jr	:	3D sp jacobian 
+    ! nr	:	number of datasets
     ! nb	:	number of parameters
     ! n		:	number of values in each vector in x 
     ! rs	:	running sum
@@ -113,6 +127,7 @@ MODULE optimize
     !INOUT
     REAL(KIND=8), DIMENSION(0:), INTENT(INOUT) :: fdiv
     REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y
+    REAL(KIND=8), DIMENSION(0:,0:,0:), INTENT(INOUT) :: Jr
     REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: beta0
     REAL(KIND=8), INTENT(IN) :: hscal
     INTEGER, DIMENSION(0:), INTENT(IN) :: n
@@ -120,20 +135,19 @@ MODULE optimize
     INTEGER, INTENT(INOUT) :: stat
 
     !Internal
-    INTEGER :: i,j,k,nb,m
+    INTEGER :: i,j,k,nb,nr
     REAL(KIND=8) :: rs
-    REAL(KIND=8), DIMENSION(:,:,:), ALLOCATABLE :: Jr
 
     stat = stat + 1
 
     nb = SIZE(beta0(:))
-    m = SIZE(x(:,1))
+    nr = SIZE(x(:,0))
 
     !if analytical derivatives
     IF (der_type .EQ. 0) THEN
       DO i=0,nb-1 !loop over parameters
         rs = 0.0E0
-        DO j=0,m-1 !loop over residuals
+        DO j=0,nr-1 !loop over residuals
           DO k=0,n(j)-1 !loop over indicies
             rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*jacobian(j,i,k,y(j,:),x(j,:),beta0(:))/(1.0E0*n(j))
           END DO
@@ -142,13 +156,11 @@ MODULE optimize
       END DO
   
     ELSE IF(der_type .EQ. 2) THEN
-      !calculate jacobian     
-      ALLOCATE(Jr(0:m-1,0:nb-1,0:n(0)-1)) !Jr (residual,parameter,index)
+      !calcualat the jacobian
       CALL get_Jac(y(:,:),x(:,:),beta0(:),der_type,hscal,Jr(:,:,:))
-
       DO i=0,nb-1 !loop over parameters
         rs=0.0E0
-        DO j=0,m-1 !loop over residuals
+        DO j=0,nr-1 !loop over residuals
           DO k=0,n(j)-1 !loop over indicies
           rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*Jr(j,i,k)/(1.0E0*n(j)) 
           END DO
@@ -161,6 +173,58 @@ MODULE optimize
     stat = stat - 1
 
   END SUBROUTINE get_fdiv
+!--------------------------------------------------------
+  SUBROUTINE get_sdiv(sdiv,der_type,hscal,y,x,beta0,n,Jr,Hr,stat)
+    IMPLICIT NONE
+
+    ! sdiv	:	2D sp second partial deriviatives vector
+    ! Jr	:	3D sp jacobian
+    ! Hr	:	4D sp hessian
+    ! beta0	:	1D sp vector of parameters 
+    ! hscal	:	sp scaling for numerical derivatives
+    ! der_type	:	int derivative type
+    ! nr	:	number of datasets
+    ! nb	:	number of parameters
+    ! n		:	number of values in each vector in x 
+    ! rs	:	running sum
+
+    !INOUT
+    REAL(KIND=8), DIMENSION(0:,0:,0:,0:), INTENT(INOUT) :: Hr
+    REAL(KIND=8), DIMENSION(0:,0:,0:), INTENT(IN) :: Jr
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(INOUT) :: sdiv
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y
+    REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: beta0
+    REAL(KIND=8), INTENT(IN) :: hscal
+    INTEGER, DIMENSION(0:), INTENT(IN) :: n
+    INTEGER, INTENT(IN) :: der_type
+    INTEGER, INTENT(INOUT) :: stat
+
+    !Internal
+    INTEGER :: i,j,k,l,nb,nr,ni
+    REAL(KIND=8) :: rs
+
+    stat = stat + 1
+
+    nb = SIZE(beta0(:))
+    nr = SIZE(x(:,0))
+    ni = SIZE(x(0,:))
+
+    DO i=0,nb-1      !loop over parameter i
+      DO j=0,nb-1    !loop over parameter j
+        rs = 0.0E0
+        DO k=0,nr-1  !loop over residual 
+          DO l=0,ni-1 ! loop over index
+            rs = rs + Jr(k,i,l)*Jr(k,j,l)/ni !this is a strange way to get the second derivative? 
+          END DO
+        END DO 
+        sdiv(i,j) = rs
+      END DO
+    END DO
+    
+
+    stat = stat - 1
+
+  END SUBROUTINE get_sdiv
 !--------------------------------------------------------
 ! calculate the jacobian
   SUBROUTINE get_Jac(y,x,beta0,der_type,hscal,Jr)
