@@ -1,15 +1,27 @@
-3 		!number of data sets, int
-2 		!number of independent parameters, int
-1.0E-06 	!convergence criteria
-50		!max iterations
+3 		!number of data sets (residuals), int
+2 		!number of independent parameters int
+1		!number of equality constraints int
+0 		!number of inequality constraints int
+
+General parameters 
+1.0E-06		!cutoff for X^2
+1.0E-16 	!X^2 convergence criteria
+20		!max iterations of base optimization
 central		!method for derivatives (analytic, must edit hard_code.f90, forward, or central)
-1.0E-6		!scale factor to get h for numerical derivatives
+1.0E-6		!h for numerical derivatives
+
+Constraint parameters (any numbers if nonconstrained)
+15		!max number of lagrange iterations 
+0.001D0		!initial penalty constant float
+5.0D0		!scale factor for penalty constant float
+10.0D0		!Initial Lagrange Multiplier
 
 Please enter your initial parameters (one line)
-5.51E0 2.28E0
+3.00E0 3.00E0 
 
 Please enter file names of datasets (one per line)
 A.txt
 B.txt
 C.txt
+
 

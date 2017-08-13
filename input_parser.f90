@@ -5,20 +5,23 @@ MODULE nlsq_input
   CONTAINS
 
 !-------------------------------------------------------
-  SUBROUTINE get_input(x,y,ik,tol,max_it,der_type,hscal,stat)
+  SUBROUTINE get_input(x,y,ik,ec,nc,tol,conv,max_con,max_opt,der_type,hscal,c,cscal,lm,stat)
     IMPLICIT NONE
     ! x           :       2D DP array of x values to fit
     ! y           :       2D DP array of y values to fit
     ! ik          :       1D DP array of initial parameters
+    ! ec          :       int number of equality constraints    
+    ! nc          :       int number of inequality constraints
     ! tol         :       DP convergence tolerance 
-    ! max_it      :       int max iterations
+    ! max_con     :       int max iterations for each optimization
+    ! max_opt     :       int max number of lagrange iterations
     ! stat	  :	  int status
     
     !INOUT variables
     REAL(KIND=8), DIMENSION(:,:), ALLOCATABLE, INTENT(INOUT) :: x,y
     REAL(KIND=8), DIMENSION(:), ALLOCATABLE, INTENT(INOUT) :: ik 
-    REAL(KIND=8), INTENT(INOUT) :: tol,hscal
-    INTEGER, INTENT(INOUT) :: max_it,stat,der_type
+    REAL(KIND=8), INTENT(INOUT) :: tol,hscal,c,cscal,lm,conv
+    INTEGER, INTENT(INOUT) :: max_opt,max_con,stat,der_type,ec,nc
     CHARACTER(LEN=32) :: fname,line
 
     !internal varaibles
@@ -34,9 +37,14 @@ MODULE nlsq_input
     !initial parameters
     READ(1,*) nd    !number of datasets
     READ(1,*) nk    !number of independent parameters
+    READ(1,*) ec
+    READ(1,*) nc
     ALLOCATE(ik(0:nk-1))
+    READ(1,*) 
+    READ(1,*)
     READ(1,*) tol
-    READ(1,*) max_it
+    READ(1,*) conv
+    READ(1,*) max_opt
     READ(1,*) line 
     IF (line .EQ. "analytic") THEN
       der_type = 0
@@ -53,6 +61,12 @@ MODULE nlsq_input
     ELSE
       READ(1,*) hscal
     END IF 
+    READ(1,*)
+    READ(1,*)
+    READ(1,*) max_con
+    READ(1,*) c
+    READ(1,*) cscal
+    READ(1,*) lm
     READ(1,*)
     READ(1,*) 
     READ(1,*) ik
@@ -89,7 +103,7 @@ MODULE nlsq_input
 
     CLOSE (unit=1, status="keep")
     
-    CALL print_input(nd,nk,ik,tol,der_type,hscal,max_it)
+    CALL print_input(nd,nk,ik,ec,nc,tol,conv,der_type,hscal,c,cscal,lm,max_con,max_opt)
 
     stat = 0
 
@@ -97,15 +111,17 @@ MODULE nlsq_input
 
 !-------------------------------------------------------
 
-  SUBROUTINE print_input(nd,nk,ik,tol,der_type,hscal,max_it)
+  SUBROUTINE print_input(nd,nk,ik,ec,nc,tol,conv,der_type,hscal,c,cscal,lm,max_con,max_opt)
     IMPLICIT NONE
     REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: ik 
-    REAL(KIND=8), INTENT(IN) :: tol,hscal
-    INTEGER, INTENT(IN) :: nd,nk,max_it,der_type
+    REAL(KIND=8), INTENT(IN) :: tol,hscal,c,cscal,lm,conv
+    INTEGER, INTENT(IN) :: nd,nk,max_con,max_opt,der_type,ec,nc
     INTEGER :: i
 
     WRITE(*,*) "Number of Datasets : ", nd
-    WRITE(*,*) "Number of independent parameters : ", nk
+    WRITE(*,*) "Number of residuals : ", nk
+    WRITE(*,*) "Number of equality constraints : ", ec
+    WRITE(*,*) "Number of inequality constraints : ", nc
     WRITE(*,*) "Initial parameters :"
     DO i=0,SIZE(ik)-1
       WRITE(*,*) ik(i)
@@ -120,6 +136,11 @@ MODULE nlsq_input
       WRITE(*,*) "Derivative type : central"
       WRITE(*,*) "h scale factor of : ", hscal
     END IF 
+    IF (ec .NE. 0 .OR. nc .NE. 0) THEN
+      WRITE(*,*) "Initial penalty constant : ", c
+      WRITE(*,*) "Penalty constant scale factor : ", cscal
+      WRITE(*,*) "Initial Lagrange Multiplier : ", lm
+    END IF
 
   END SUBROUTINE print_input
 

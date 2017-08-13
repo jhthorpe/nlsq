@@ -7,7 +7,7 @@ MODULE hard_code
   CONTAINS 
 
 !--------------------------------------------------------
-!individual residuals
+!individual residuals (required)
  REAL(KIND=8) FUNCTION residual(r,i,y,x,beta)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: i,r
@@ -16,8 +16,8 @@ MODULE hard_code
 
     ! r		:	integer control value, indicates which residual you want to calculate
     ! i		:	integer, idicates which value of the y vector you want to get
-    ! beta	:	single prescision, 1D vector, contains parameters
-    ! x,y	:	single precision, 1D vectors, contain x and y values
+    ! beta	:	double prescision, 1D vector, contains parameters
+    ! x,y	:	double precision, 1D vectors, contain x and y values
 
     !Construct your residuals here 
     IF (r .EQ. 0) THEN
@@ -34,7 +34,36 @@ MODULE hard_code
 
   END FUNCTION residual
 !--------------------------------------------------------
-! hard coded jaccobian
+!sum of individual constraints at a given time (required if constrained optimization)
+  REAL(KIND=8) FUNCTION eq_con(i,y,x,beta)
+    IMPLICIT NONE
+    INTEGER,INTENT(IN) :: i
+    REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: beta
+    REAL(KIND=8),DIMENSION(0:,0:), INTENT(IN) :: x,y
+
+    REAL (KIND=8) :: temp
+    
+    ! n		:	int selects which constraint to use
+    ! i		:	int selects y or x values
+    ! beta	:	1D DP list of parameters
+    ! x,y	:	2D dp list of x,y values - just in case you need some strange constraints
+    ! temp	:	running sum
+    
+    temp = 0.0D0
+
+    !construct and sum up your constraints here, must be of form h(x) = 0
+    
+    !EXAMPLES
+    !two parameters are equal : temp = temp + (beta(0) - beta(1))
+    !one parameter has constant value constant: temp = tmep + (beta(1) - 0.33D0)
+
+    temp = temp + (beta(1) - 0.18D0)
+
+    eq_con = temp 
+
+  END FUNCTION eq_con 
+!--------------------------------------------------------
+! hard coded jaccobian (optional)
   REAL(KIND=8) FUNCTION jacobian(r,p,i,y,x,beta)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: i,p,r
