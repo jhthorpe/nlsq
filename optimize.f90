@@ -159,9 +159,9 @@ MODULE optimize
     !internal
     REAL(KIND=8) :: old_scs,new_scs,l
     REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: chisq,new_chisq,delta,fdiv,track_scs 
-    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:) :: sdiv, track_param 
-    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:) :: Jr 
-    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:,:) :: Hr 
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:) :: sdiv, track_param, Jh ! Jh - constraint jacobian  
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:) :: Jr,Hh      !Jr - residual jacobian,  Hh - constraint hessian
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:,:,:,:) :: Hr    !Hr - residual hessian
     INTEGER, DIMENSION(:), ALLOCATABLE :: n
     INTEGER :: i,j,nb,nr,iter,flag,stat0,n01,n12,n02
 
@@ -185,7 +185,9 @@ MODULE optimize
     END DO
     tol = tol/n(0) 
     ALLOCATE(Jr(0:nr-1,0:nb-1,0:n(0)-1)) !Jr (residual,parameter,index)
+    ALLOCATE(Jh(0:nb-1,0:n(0)-1)) !Jr (residual,parameter,index)
     ALLOCATE(Hr(0:nr-1,0:nb-1,0:nb-1,0:n(0)-1)) !Hr (residual, parameter, parameter, index)
+    ALLOCATE(Hh(0:nb-1,0:nb-1,0:n(0)-1)) !Hr (residual, parameter, parameter, index)
 
     WRITE(*,*) 
     WRITE(*,*) "~~~~~~~~~~~~~~~~~~~~"
@@ -204,7 +206,7 @@ MODULE optimize
     DO i=0,nr-1
       chisq(i) = 0.0D0
       DO j=0,n(i)-1
-        chisq(i) = chisq(i) + (residual(i,j,y(i,:),x(i,:),beta0(:)) - const(j,beta0(:),y(:,:),x(:,:),c,lm))**2.0D0
+        chisq(i) = chisq(i) + residual(i,j,y(i,:),x(i,:),beta0(:))**2.0D0 + const(j,beta0(:),y(:,:),x(:,:),c,lm)
         !minus sign b/c of how I formatted the residuals, need y - f(x) => y - L(x,lm)
       END DO
       !chisq(i) = chisq(i)/(1.0D0*n(i))
@@ -239,18 +241,20 @@ MODULE optimize
         STOP
       END IF
 
-      
 
       !3) find delta  
       !3a) get first partial deriviative vector
-      CALL eqfdiv(fdiv,der_type,hscal,y,x,beta0,c,lm,n,Jr,stat) 
+      CALL eqfdiv(fdiv,der_type,hscal,y,x,beta0,c,lm,n,Jr,Jh,stat) 
       IF (stat .NE. 2) STOP
       WRITE(*,*) "first partial derivative vector"
       WRITE(*,*) fdiv(:)
       WRITE(*,*)
 
+!foo1
+
       !3b) get second partial derivative vector
-      CALL get_sdiv(sdiv,der_type,hscal,y,x,beta0,n,Jr,Hr,stat)
+      CALL eqsdiv(sdiv,der_type,hscal,y,x,beta0,n,Jr,Jh,Hr,Hh,stat)
+      STOP !REMOVE THIS
       IF (stat .NE. 2) STOP
       WRITE(*,*) "second partial derivative matrix"
       DO j=0,nb-1
@@ -292,13 +296,12 @@ MODULE optimize
       WRITE(*,*) "trial parameters"
       WRITE(*,*) beta(:)
      
-!foo1
      !5) get trail fit
       new_scs = 0.0D0
       DO i=0,nr-1
         new_chisq(i) = 0.0D0
         DO j=0,n(i)-1
-          new_chisq(i) = new_chisq(i) + (residual(i,j,y(i,:),x(i,:),beta(:)) - const(j,beta0(:),y(:,:),x(:,:),c,lm))**2.0D0 
+          new_chisq(i) = new_chisq(i) + residual(i,j,y(i,:),x(i,:),beta(:))**2.0D0 + const(j,beta0(:),y(:,:),x(:,:),c,lm)
         END DO
         !new_chisq(i) = new_chisq(i)/(1.0D0*n(i))
         new_scs = new_scs + new_chisq(i)
@@ -365,7 +368,7 @@ MODULE optimize
 
 !--------------------------------------------------------
 ! Get the first partial derivative vector for Marquardt optimization 
-  SUBROUTINE eqfdiv(fdiv,der_type,hscal,y,x,beta0,c,lm,n,Jr,stat)
+  SUBROUTINE eqfdiv(fdiv,der_type,hscal,y,x,beta0,c,lm,n,Jr,Jh,stat)
     IMPLICIT NONE
 
     ! fdiv	:	1D sp first partial deriviatives vector
@@ -379,9 +382,10 @@ MODULE optimize
     ! rs	:	running sum
 
     !INOUT
-    REAL(KIND=8), DIMENSION(0:), INTENT(INOUT) :: fdiv
-    REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y
     REAL(KIND=8), DIMENSION(0:,0:,0:), INTENT(INOUT) :: Jr
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(INOUT) :: Jh
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y
+    REAL(KIND=8), DIMENSION(0:), INTENT(INOUT) :: fdiv
     REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: beta0
     REAL(KIND=8), INTENT(IN) :: hscal,c,lm
     INTEGER, DIMENSION(0:), INTENT(IN) :: n
@@ -410,75 +414,95 @@ MODULE optimize
       !  END DO
       !  fdiv(i) = rs
       !END DO
- !foo2 
+
     ELSE IF(der_type .EQ. 2) THEN
-      !calcualat the jacobian
-      CALL eqJac(y(:,:),x(:,:),beta0(:),der_type,hscal,Jr(:,:,:),c,lm) !edit this
+      !calcualate the jacobian
+      CALL get_Jr(y(:,:),x(:,:),beta0(:),der_type,hscal,Jr(:,:,:)) 
+      CALL get_Jh(y(:,:),x(:,:),beta0(:),der_type,hscal,Jh(:,:)) !change dimension of Jh
       DO i=0,nb-1 !loop over parameters
         rs=0.0E0
-        DO j=0,nr-1 !loop over residuals
-          DO k=0,n(j)-1 !loop over indicies
-          rs = rs + (residual(j,k,y(j,:),x(j,:),beta0(:)) - const(k,beta0(:),y(:,:),x(:,:),c,lm))&
-          *Jr(j,i,k)/(1.0E0*n(j)) 
+        !---
+        !DO j=0,nr-1 !loop over residuals
+        !  DO k=0,n(j)-1 !loop over indicies
+        !  rs = rs + residual(j,k,y(j,:),x(j,:),beta0(:))*Jr(j,i,k)/(1.0E0*n(j)) &
+        !    - 0.5D0*lm*Jh(j,i,k) - 0.5D0*c*eq_const(k,y(:,:),x(:,:),beta0(:))*Jh(j,i,k) 
+        !  !I'm not sure where the constraint function should go with respect to the summation
+        !  
+        !  END DO
+        !END DO
+        DO j=0,n(0)-1 !loop over indicies - note that this only works if all residuals have the same number of points
+          DO k=0,nr-1 !loop over residuals
+            rs = rs + residual(k,j,y(k,:),x(k,:),beta0(:))*Jr(k,i,j)/(1.0E0*n(k))
           END DO
+          rs = rs - 0.5D0*lm*Jh(i,j) - 0.5D0*c*eq_con(j,y(:,:),x(:,:),beta0(:))*Jh(i,j)  !constraint cost
         END DO
         fdiv(i) = rs
       END DO
        
     END IF
- 
+
     stat = stat - 1
 
   END SUBROUTINE eqfdiv
-
 !--------------------------------------------------------
-! calculate the equality constrained lagrangian jacobian
-  SUBROUTINE eqJac(y,x,beta0,der_type,hscal,Jr,c,lm)
+  SUBROUTINE eqsdiv(sdiv,der_type,hscal,y,x,beta0,n,Jr,Jh,Hr,Hh,stat)
     IMPLICIT NONE
-    
-!foo3
+
+    ! sdiv	:	2D sp second partial deriviatives vector
+    ! Jr	:	3D sp jacobian
+    ! Hr	:	4D sp hessian
+    ! beta0	:	1D sp vector of parameters 
+    ! hscal	:	sp scaling for numerical derivatives
+    ! der_type	:	int derivative type
+    ! nr	:	number of datasets
+    ! nb	:	number of parameters
+    ! n		:	number of values in each vector in x 
+    ! rs	:	running sum
 
     !INOUT
-    REAL(KIND=8), DIMENSION(0:,0:,0:), INTENT(INOUT) :: Jr
-    REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y
+    REAL(KIND=8), DIMENSION(0:,0:,0:,0:), INTENT(INOUT) :: Hr
+    REAL(KIND=8), DIMENSION(0:,0:,0:), INTENT(INOUT) :: Hh
+    REAL(KIND=8), DIMENSION(0:,0:,0:), INTENT(IN) :: Jr
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(INOUT) :: sdiv
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y,Jh
     REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: beta0
-    REAL(KIND=8), INTENT(IN) :: hscal,c,lm
+    REAL(KIND=8), INTENT(IN) :: hscal
+    INTEGER, DIMENSION(0:), INTENT(IN) :: n
+    INTEGER, INTENT(INOUT) :: stat
     INTEGER, INTENT(IN) :: der_type
 
-    !internal
-    INTEGER :: i,j,k,nr,nb,n
-    REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: betaf,betar
+    !Internal
+    REAL(KIND=8) :: rs
+    INTEGER :: i,j,k,l,nb,nr,ni
 
-    nr = SIZE(x(:,0))     ! number of residuals
-    nb = SIZE(beta0(:))   ! number of parameters
-    n = SIZE(x(0,:))      ! number of datapoints
+    stat = stat + 1
 
-    ALLOCATE(betaf(0:nb-1))
-    ALLOCATE(betar(0:nb-1))
+    nb = SIZE(beta0(:))
+    nr = SIZE(x(:,0))
+    ni = SIZE(x(0,:))
 
-    !central derivatives
-    IF (der_type .EQ. 2) THEN
-      DO i=0,nb-1 !loop over parameters
-        betaf(:) = beta0(:)
-        betar(:) = beta0(:)
-        !change betaf and r
-        betaf(i) = beta0(i) + hscal 
-        betar(i) = beta0(i) - hscal
-        DO j=0,nr-1 !loop over residuals
-          DO k=0,n-1 !look over indicies
-            Jr(j,i,k) = ((residual(j,k,y(j,:),x(j,:),betaf(:)) - const(k,betaf(:),y(:,:),x(:,:),c,lm)) - &
-            (residual(j,k,y(j,:),x(j,:),betar(:)) - const(k,betar(:),y(:,:),x(:,:),c,lm) ))/(-2.0E0*hscal) 
-           !negative sign, because we are using the y(i)-f(i,b) residuals, which adds in a negative sign
+!foo2
+
+    CALL get_Hr(y(:,:),x(:,:),beta0(:),der_type,hscal,Hr(:,:,:,:))
+   !CALL get_Hh
+
+    DO i=0,nb-1      !loop over parameter i
+      DO j=0,nb-1    !loop over parameter j
+        rs = 0.0E0
+        DO k=0,nr-1  !loop over residual 
+          DO l=0,ni-1 ! loop over index
+            rs = rs + Jr(k,i,l)*Jr(k,j,l)/ni !this is a strange way to get the second derivative? 
           END DO
-        END DO
+        END DO 
+        sdiv(i,j) = rs
       END DO
+    END DO
+    
 
-    ELSE
-      WRITE(*,*) "Sorry, that jacobian has not be implimented yet"
-      STOP
-    END IF
+    stat = stat - 1
 
-  END SUBROUTINE eqJac
+  END SUBROUTINE eqsdiv
+
 !--------------------------------------------------------
 !function that returns constraint contribution to augmented lagrangian
   REAL(KIND=8) FUNCTION const(i,beta,y,x,c,lm)
@@ -488,7 +512,7 @@ MODULE optimize
     REAL(KIND=8), INTENT(IN) :: c,lm
     INTEGER, INTENT(IN) :: i
 
-    const = lm*eq_con(i,y(:,:),x(:,:),beta(:)) + 0.5D0*c*ABS(eq_con(i,y(:,:),x(:,:),beta(:)))**2.0D0
+    const = lm*eq_con(i,y(:,:),x(:,:),beta(:)) + 0.5D0*c*(eq_con(i,y(:,:),x(:,:),beta(:)))**2.0D0
 
   END FUNCTION const
 !--------------------------------------------------------
@@ -606,6 +630,8 @@ MODULE optimize
       WRITE(*,*) "first partial derivative vector"
       WRITE(*,*) fdiv(:)
       WRITE(*,*)
+
+      
 
       !3b) get second partial derivative vector
       CALL get_sdiv(sdiv,der_type,hscal,y,x,beta0,n,Jr,Hr,stat)
@@ -811,7 +837,7 @@ MODULE optimize
   
     ELSE IF(der_type .EQ. 2) THEN
       !calcualat the jacobian
-      CALL get_Jac(y(:,:),x(:,:),beta0(:),der_type,hscal,Jr(:,:,:))
+      CALL get_Jr(y(:,:),x(:,:),beta0(:),der_type,hscal,Jr(:,:,:))
       DO i=0,nb-1 !loop over parameters
         rs=0.0E0
         DO j=0,nr-1 !loop over residuals
@@ -880,8 +906,8 @@ MODULE optimize
 
   END SUBROUTINE get_sdiv
 !--------------------------------------------------------
-! calculate the jacobian
-  SUBROUTINE get_Jac(y,x,beta0,der_type,hscal,Jr)
+! calculate the residuals jacobian
+  SUBROUTINE get_Jr(y,x,beta0,der_type,hscal,Jr)
     IMPLICIT NONE
     
     !INOUT
@@ -911,7 +937,7 @@ MODULE optimize
         betaf(i) = beta0(i) + hscal 
         betar(i) = beta0(i) - hscal
         DO j=0,nr-1 !loop over residuals
-          DO k=0,n-1 !look over indicies
+          DO k=0,n-1 !loop over indicies
            Jr(j,i,k) = (residual(j,k,y(j,:),x(j,:),betaf(:)) - residual(j,k,y(j,:),x(j,:),betar(:)))/(-2.0E0*hscal) 
            !negative sign, because we are using the y(i)-f(i,b) residuals, which adds in a negative sign
           END DO
@@ -923,7 +949,107 @@ MODULE optimize
       STOP
     END IF
 
-  END SUBROUTINE get_Jac
+  END SUBROUTINE get_Jr
+!--------------------------------------------------------
+! calculate the constraints jacobian
+  SUBROUTINE get_Jh(y,x,beta0,der_type,hscal,Jh)
+    IMPLICIT NONE
+    
+    !INOUT
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(INOUT) :: Jh
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y
+    REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: beta0
+    REAL(KIND=8), INTENT(IN) :: hscal
+    INTEGER, INTENT(IN) :: der_type
+
+    !internal
+    INTEGER :: i,j,k,nb,n
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: betaf,betar
+
+    nb = SIZE(beta0(:))   ! number of parameters
+    n = SIZE(x(0,:))      ! number of datapoints
+
+
+    ALLOCATE(betaf(0:nb-1))
+    ALLOCATE(betar(0:nb-1))
+
+    !central derivatives
+    IF (der_type .EQ. 2) THEN
+      DO i=0,nb-1 !loop over parameters
+        betaf(:) = beta0(:)
+        betar(:) = beta0(:)
+        !change betaf and r
+        betaf(i) = beta0(i) + hscal 
+        betar(i) = beta0(i) - hscal
+        DO k=0,n-1 !loop over indicies
+         Jh(i,k) = (eq_con(k,y(:,:),x(:,:),betaf(:)) - eq_con(k,y(:,:),x(:,:),betar(:)))/(2.0E0*hscal) 
+        END DO
+      END DO
+
+    ELSE
+      WRITE(*,*) "Sorry, that jacobian has not be implimented yet"
+      STOP
+    END IF
+
+  END SUBROUTINE get_Jh
+!--------------------------------------------------------
+! calculate the residuals Hessian
+  SUBROUTINE get_Hr(y,x,beta0,der_type,hscal,Hr)
+    IMPLICIT NONE
+    
+    !INOUT
+    REAL(KIND=8), DIMENSION(0:,0:,0:,0:), INTENT(INOUT) :: Hr
+    REAL(KIND=8), DIMENSION(0:,0:), INTENT(IN) :: x,y
+    REAL(KIND=8), DIMENSION(0:), INTENT(IN) :: beta0
+    REAL(KIND=8), INTENT(IN) :: hscal
+    INTEGER, INTENT(IN) :: der_type
+
+    !internal
+    REAL(KIND=8), ALLOCATABLE, DIMENSION(:) :: betaff,betafr,betarf,betarr
+    INTEGER :: i,j,k,l,nr,nb,n,a,b
+
+    nr = SIZE(x(:,0))     ! number of residuals
+    nb = SIZE(beta0(:))   ! number of parameters
+    n = SIZE(x(0,:))      ! number of datapoints
+
+    ALLOCATE(betaff(0:nb-1))
+    ALLOCATE(betafr(0:nb-1))
+    ALLOCATE(betarf(0:nb-1))
+    ALLOCATE(betarr(0:nb-1))
+
+    !central derivatives
+    IF (der_type .EQ. 2) THEN
+      DO i=0,nb-1 !loop over parameter 1
+        DO l=0,i  !loop over parameter 2 
+         !CHECK ASSIGNED CORRECTLY WITH COL MAJOR FORTRAN
+          betaff(:) = beta0(:)
+          betarr(:) = beta0(:)
+          betaff(i) = betaff(i) + hscal 
+          betarr(i) = betarr(i) - hscal 
+          betafr(:) = betaff(:)
+          betarf(:) = betarr(:)
+          betafr(l) = betafr(l) - hscal !do not change order, this bizzare method eliminates two evaluations 
+          betarf(l) = betarf(l) + hscal !do not change order
+          betaff(l) = betaff(l) + hscal 
+          betarr(l) = betarr(l) - hscal 
+          DO j=0,nr-1 !loop over residuals
+            DO k=0,n-1 !loop over indicies
+              Hr(j,i,l,k) = ( (residual(j,k,y(j,:),x(j,:),betaff(:)) - residual(j,k,y(j,:),x(j,:),betafr(:)) ) &
+              - ( residual(j,k,y(j,:),x(j,:),betarf(:)) - residual(j,k,y(j,:),x(j,:),betarr(:)) ) ) &
+              /(-4.0E0*hscal**2.0D0) 
+              Hr(j,l,i,k) = Hr(j,i,l,k)
+              !negative sign, because we are using the y(i)-f(i,b) residuals, which adds in a negative sign
+            END DO
+          END DO
+        END DO
+      END DO
+
+    ELSE
+      WRITE(*,*) "Sorry, that Hessian has not be implimented yet"
+      STOP
+    END IF
+
+  END SUBROUTINE get_Hr
 !--------------------------------------------------------
 ! use lapack and blas to invert a 2d, dp matrix
   SUBROUTINE invert_2ddp(A,stat)
