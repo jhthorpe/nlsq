@@ -6,12 +6,12 @@
 General parameters 
 1.0E-06		!cutoff for X^2
 1.0E-16 	!X^2 convergence criteria
-20		!max iterations of base optimization
+2		!max iterations of base optimization
 central		!method for derivatives (analytic, must edit hard_code.f90, forward, or central)
-1.0E-6		!h for numerical derivatives, do not go below 1E-6
+1.0E-5		!h for numerical derivatives, do not go below 1E-6
 
 Constraint parameters (any numbers if nonconstrained)
-1		!max number of lagrange iterations 
+2		!max number of lagrange iterations 
 0.0001D0	!initial penalty constant float
 5.0D0		!scale factor for penalty constant float
 10.0D0		!Initial Lagrange Multiplier
