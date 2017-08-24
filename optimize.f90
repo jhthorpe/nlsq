@@ -5,11 +5,11 @@ MODULE optimize
   CONTAINS
 
 !WORK NOTES
-! - get the goddamn tracking under control
 ! - to sum or not to sum h(x) over the indicies (foo6)
 ! - something weird happening... possibly a sign error or a tracking error
-! - impliment distinction between L and X^2
-! - trial parameters/sum of chi^2 and X^2 seem wildly off...
+! - impliment tracking distinction between L and X^2
+! - core problem - lm*h(x) CAN be negative depending on h(x), which artifically lowers L, which we are trying to minimize.
+! - switching h(x) to (a - const)**2.0 = 0.0 seems to drastially improve performance??
 
 !--------------------------------------------------------
 ! equality constrained optimization
@@ -76,26 +76,41 @@ MODULE optimize
       track_cons(iter,1) = c
 
       !check for convergence and cutoff
-        
-      IF (track_scs(iter) .LE. tol) flag = 1
+       
+      !check for cuttoff 
+      IF (track_scs(iter) .LE. tol) flag = 1 
 
+      !check for convergence
       IF (iter .GT. 3) THEN
-        IF ( (ABS(track_scs(iter-3) - track_scs(iter-2)) .LE. conv) .AND.&
-          (ABS(track_scs(iter-2)-track_scs(iter-1)) .LE. conv) .AND. &
-          (ABS(track_scs(iter-3)-track_scs(iter-1)) .LE. conv)) flag=2
+        IF ( (ABS(track_scs(iter-2) - track_scs(iter-1)) .LE. conv) .AND.&
+          (ABS(track_scs(iter-1)-track_scs(iter)) .LE. conv) .AND. &
+          (ABS(track_scs(iter-2)-track_scs(iter)) .LE. conv)) flag=2 
       END IF
 
-      !force the constraints to be met
-      
-      val = eq_con(0,y(:,:),x(:,:),beta0(:))! - not summing over all indicies
+
+      !check the raw constraints (no multipliers) are being met
+!foo7
+      val = eq_con(0,y(:,:),x(:,:),beta0(:))! - not summing over all indicies, this feels wrong
+      !sum over all inidcies
       !val = 0.0D0
       !DO j=0,SIZE(x(0,:))-1
-      !  val =val + eq_con(j,y(:,:),x(:,:),beta0(:))
+      !  val =val + eq_con(j,y(:,:),x(:,:),beta0(:)) / number of indicies
       !END DO
-      track_val(iter) = val
-      IF (ABS(val) .GT. 1.0E-8) flag=0 
 
-      IF (flag .EQ. 1 .OR. flag .EQ. 2) EXIT
+      !this is currently just the constraints, not multiplied
+      track_val(iter) = val
+
+      !force a continuation if the raw constraints are not sufficiently met 
+      IF (ABS(val) .GT. 1.0E-7) flag = 0 
+    
+      !check max iterations
+      IF (iter .GE. max_eq-1) flag = 3
+
+      !exit conditions
+      IF (flag .NE. 0) EXIT
+
+      !update lagrance multiplier and 
+      val = 0.5*lm*eq_con(0,y(:,:),x(:,:),beta0(:)) + 0.5*c*eq_con(0,y(:,:),x(:,:),beta0(:))**2.0D0 
 
       lm = lm + c*val
       c = c*cscal
@@ -106,24 +121,23 @@ MODULE optimize
 
     END DO
 
-    
-
     WRITE(*,*) "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"  
     WRITE(*,*)  
     WRITE(*,*) "                          SUMMARY OF CONSTRAINT ITERATIONS" 
     WRITE(*,*)
-    IF (flag .EQ. 0) WRITE(*,*) "Exit Condition : max iterations"
+    IF (flag .EQ. 3) WRITE(*,*) "Exit Condition : max iterations"
     IF (flag .EQ. 1) WRITE(*,*) "Exit Condition : chi^2 below cutoff"
     IF (flag .EQ. 2) WRITE(*,*) "Exit Condition : convergence"
+    IF (flag .EQ. 0) WRITE(*,*) "Exit Condition : you broke my flags"
     WRITE(*,*) "Total iterations : ", iter
     WRITE(*,*)
     WRITE(*,*) "iter    X^2    parameters"
-    DO i=0,iter-1
+    DO i=0,iter
       WRITE(*,*) i, track_scs(i), track_param(i,:)
     END DO
     WRITE(*,*) 
     WRITE(*,*) "iter    h(x)    Lag. Mult.    Pen. Coef."
-    DO i=0,iter-1
+    DO i=0,iter
       WRITE(*,*) i, track_val(i), track_cons(i,:)
     END DO
     WRITE(*,*)
@@ -203,7 +217,7 @@ MODULE optimize
 
     !reset tracking
     DO i=0,max_it-1
-      track_scs(i) = i
+      track_scs(i) = i*1.0D0
     END DO
 
     !Initial Setup 
@@ -332,7 +346,6 @@ MODULE optimize
         l = l * 10.0D0
         WRITE(*,*) "New lambda : ", l 
       ELSE
-        IF (new_scs .LE. tol) flag = 1 !we have reached the cutoff we care about
         WRITE(*,*) "Adopting new parameters"
         CALL summary(beta0,beta,old_scs,new_scs,chisq,new_chisq,iter)
         l = l * 0.10D0
@@ -347,33 +360,41 @@ MODULE optimize
       track_scs(iter) = old_scs
       track_param(:,iter) = beta0(:) 
 !foo5
+      !check for cuttof 
+      IF (old_scs .LE. tol) flag = 1 
+
       !check for "convergence" 
       IF (iter .GT. 3) THEN
-        IF ( (ABS(track_scs(iter-3) - track_scs(iter-2)) .LE. conv) .AND.&
-          (ABS(track_scs(iter-2)-track_scs(iter-1)) .LE. conv) .AND. &
-          (ABS(track_scs(iter-3)-track_scs(iter-1)) .LE. conv)  .AND. &
+        IF ( (ABS(track_scs(iter-2) - track_scs(iter-1)) .LE. conv) .AND.&
+          (ABS(track_scs(iter-1)-track_scs(iter)) .LE. conv) .AND. &
+          (ABS(track_scs(iter-2)-track_scs(iter)) .LE. conv)  .AND. &
           l .GT. 1.0D5) THEN
           flag = 2
         END IF
       END IF
 
-      IF (flag .EQ. 1 .OR. flag .EQ. 2) EXIT
+      !check for max iterations
+      IF (iter .GE. max_it - 1) flag = 3
 
+      !exit conditions
+      IF (flag .NE. 0) EXIT
          
     END DO
      
-    IF (flag .EQ. 0) THEN
+    IF (flag .EQ. 3) THEN
       WRITE(*,*) "Max iterations reached"
     ELSE IF (flag .EQ. 1) THEN
       WRITE(*,*) "Sum of Sum of Square Difference below cutoff" 
     ELSE IF (flag .EQ. 2) THEN
       WRITE(*,*) "Optimization has converged"
+    ELSE
+      WRITE(*,*) "somehow, you broke my flags."
     END IF
 
     CALL write_output(track_scs,track_param,iter)
 
-   scs = track_scs(iter-1) 
-   stat = stat0
+    scs = track_scs(iter) !again, we have weird problems with the iteration going one further than it should 
+    stat = stat0
  
   END SUBROUTINE eqLM
 
@@ -445,7 +466,7 @@ MODULE optimize
           DO k=0,nr-1 !loop over residuals
             rs = rs + residual(k,j,y(k,:),x(k,:),beta0(:))*Jr(k,i,j)/(1.0E0*n(k))
           END DO
-         ! rs = rs - 0.5D0*lm*Jh(i,j) - 0.5D0*c*eq_con(j,y(:,:),x(:,:),beta0(:))*Jh(i,j)  !constraint cost sum over iter
+         ! rs = rs - 0.5D0*lm*Jh(i,j)/(1.0E0*n(k)) - 0.5D0*c*eq_con(j,y(:,:),x(:,:),beta0(:))*Jh(i,j)/(1.0E0*n(k))  !constraint cost sum over iter
         END DO
         rs = rs - 0.5D0*lm*Jh(i,0) - 0.5D0*c*eq_con(0,y(:,:),x(:,:),beta0(:))*Jh(i,0)  !constraint cost no sum
         fdiv(i) = rs
@@ -495,8 +516,6 @@ MODULE optimize
     nr = SIZE(x(:,0))
     ni = SIZE(x(0,:))
 
-!foo2
-
     CALL get_Hr(y(:,:),x(:,:),beta0(:),der_type,hscal,Hr(:,:,:,:))
     CALL get_Hh(y(:,:),x(:,:),beta0(:),der_type,hscal,Hh(:,:,:))
 
@@ -505,21 +524,22 @@ MODULE optimize
         rs = 0.0E0
 
         !the old way - no constraints
-       ! DO k=0,nr-1  !loop over residual 
-       !   DO l=0,ni-1 ! loop over index
-       !     rs = rs + Jr(k,i,l)*Jr(k,j,l)/ni !this is a strange way to get the second derivative? 
-       !     !rs = rs + Jr(k,i,l)*Jr(k,j,l)/ni + residual(k,l,y(k,:),x(k,:),beta0(:))*Hr(k,i,j,l)/ni !residual contribution
-       !   END DO
-       ! END DO 
+        !DO k=0,nr-1  !loop over residual 
+        !  DO l=0,ni-1 ! loop over index
+        !    !rs = rs + Jr(k,i,l)*Jr(k,j,l)/ni !this is a strange way to get the second derivative? 
+        !    rs = rs + Jr(k,i,l)*Jr(k,j,l)/ni + residual(k,l,y(k,:),x(k,:),beta0(:))*Hr(k,i,j,l)/ni !residual contribution
+        !  END DO
+        !END DO 
 
-        !the new way - with constraints
+       ! !the new way - with constraints
         DO k=0,ni-1 ! loop over index
           DO l=0, nr-1 !loop over residuals
-            rs = rs + Jr(l,i,k)*Jr(l,j,k)/ni + residual(l,k,y(l,:),x(l,:),beta0(:))*Hr(l,i,j,k)/ni !residual contribution
+            rs = rs + Jr(l,i,k)*Jr(l,j,k)/(1.0D0*ni) + residual(l,k,y(l,:),x(l,:),beta0(:))*Hr(l,i,j,k)/(1.0D0*ni) !residual contribution
           END DO
-          !rs = rs + 0.5D0*lm*Hh(i,j,k) + 0.5D0*c*Jh(i,k)*Jh(j,k) + 0.5D0*c*eq_con(k,y(:,:),x(:,:),beta0(:))*Hh(i,j,k) !constraint contribution
+       !   !rs = rs + 0.5D0*lm*Hh(i,j,k)/(1.0D0*ni) + 0.5D0*c*Jh(i,k)*Jh(j,k)/(1.0D0*ni) + 0.5D0*c*eq_con(k,y(:,:),x(:,:),beta0(:))*Hh(i,j,k)/(1.0D0*ni) !constraint contribution
         END DO
         rs = rs + 0.5D0*lm*Hh(i,j,0) + 0.5D0*c*Jh(i,0)*Jh(j,0) + 0.5D0*c*eq_con(0,y(:,:),x(:,:),beta0(:))*Hh(i,j,0) !constraint contribution
+
         !CHECK THAT THIS COMPUTES CORRECTLY
         sdiv(i,j) = rs
       END DO
@@ -783,7 +803,7 @@ MODULE optimize
     WRITE(*,*)  
     WRITE(*,*) "                          SUMMARY OF CALCULATION" 
     WRITE(*,*) "iteration      X^2     parameters" 
-    DO i=0,iter-1
+    DO i=0,iter
       WRITE(*,*) i, goal(i), param(:,i)
     END DO
     WRITE(*,*) 
@@ -1137,7 +1157,7 @@ MODULE optimize
       WRITE(*,*) "Sorry, that Hessian has not be implimented yet"
       STOP
     END IF
-    
+
   END SUBROUTINE get_Hh
 !--------------------------------------------------------
 ! use lapack and blas to invert a 2d, dp matrix

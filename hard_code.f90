@@ -57,7 +57,7 @@ MODULE hard_code
     !two parameters are equal : temp = temp + (beta(0) - beta(1))
     !one parameter has constant value constant: temp = tmep + (beta(1) - 0.33D0)
 
-    temp = temp + (beta(1) - 0.25D0)
+    temp = temp + (beta(1) - 0.28D0)
 
     eq_con = temp 
 
